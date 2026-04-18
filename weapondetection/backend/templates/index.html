@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Weapon Detection AI</title>
+
+    <style>
+        body {
+            background: #f9fafb;
+            color: #111;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 0;
+        }
+
+        h1 {
+            margin-top: 20px;
+            font-weight: 600;
+        }
+
+        /* BUTTONS */
+        button {
+            padding: 10px 18px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            background: white;
+            color: black;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: 0.2s;
+        }
+
+        button:hover {
+            background: black;
+            color: white;
+        }
+
+        /* ALERT */
+        #alertBox {
+            background: black;
+            color: white;
+            padding: 10px;
+            display: none;
+            margin: 10px auto;
+            width: fit-content;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+
+        /* LAYOUT */
+        .container {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .panel {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+        }
+
+        video, img {
+            border-radius: 10px;
+            border: 1px solid #ddd;
+            max-width: 100%;
+        }
+
+        input {
+            margin: 10px;
+        }
+
+    </style>
+</head>
+
+<body>
+
+<h1>Weapon Detection System</h1>
+
+
+
+<button onclick="showMode('image')">Image</button>
+<button onclick="showMode('video')">Video</button>
+<button onclick="showMode('live')">Live</button>
+
+<hr>
+
+<div class="container">
+
+<div class="panel">
+
+<!-- IMAGE -->
+<div id="image" style="display:none;">
+    <input type="file" id="imgInput">
+    <button onclick="detectImage()">Detect</button>
+    <br><br>
+    <img id="imgOut" width="400">
+</div>
+
+<!-- VIDEO -->
+<div id="video" style="display:none;">
+    <input type="file" id="vidInput">
+    <button onclick="detectVideo()">Analyze</button>
+    <br><br>
+    <video id="vidOut" controls width="400"></video>
+</div>
+
+<!-- LIVE -->
+<div id="live">
+    <video id="cam" autoplay width="350"></video>
+    <br><br>
+    <img id="liveOut" width="350">
+</div>
+
+</div>
+</div>
+
+<script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+
+<script>
+const socket = io();
+let liveInterval = null;
+
+const cam = document.getElementById("cam");
+const output = document.getElementById("liveOut");
+
+
+function showMode(mode){
+    stopLive();
+
+    ["image","video","live"].forEach(id=>{
+        document.getElementById(id).style.display="none";
+    });
+
+    document.getElementById(mode).style.display="block";
+
+    if(mode==="live") startLive();
+}
+
+
+function detectImage(){
+    const file = document.getElementById("imgInput").files[0];
+    let form = new FormData();
+    form.append("image", file);
+
+    fetch("/detect-image",{method:"POST",body:form})
+    .then(res=>res.json())
+    .then(data=>{
+        document.getElementById("imgOut").src =
+        "data:image/jpeg;base64,"+data.image;
+
+        triggerAlert(true);
+    });
+}
+
+
+function detectVideo(){
+    const file = document.getElementById("vidInput").files[0];
+    let form = new FormData();
+    form.append("video", file);
+
+    fetch("/detect-video",{method:"POST",body:form})
+    .then(res=>res.json())
+    .then(data=>{
+        const v = document.getElementById("vidOut");
+        v.src = data.video_url + "?t=" + new Date().getTime();
+        v.load();
+        v.muted = true;
+        v.play();
+    });
+}
+
+
+function startLive(){
+    navigator.mediaDevices.getUserMedia({video:true})
+    .then(stream => cam.srcObject = stream);
+
+    liveInterval = setInterval(()=>{
+        const canvas = document.createElement("canvas");
+        canvas.width=640;
+        canvas.height=480;
+
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(cam,0,0,640,480);
+
+        socket.emit("frame", canvas.toDataURL("image/jpeg"));
+    },150);
+}
+
+function stopLive(){
+    if(liveInterval){
+        clearInterval(liveInterval);
+        liveInterval=null;
+    }
+
+    if(cam.srcObject){
+        cam.srcObject.getTracks().forEach(t=>t.stop());
+        cam.srcObject=null;
+    }
+}
+
+
+
+socket.on("response",(data)=>{
+    output.src="data:image/jpeg;base64,"+data;
+});
+
+showMode("live");
+</script>
+
+</body>
+</html>
